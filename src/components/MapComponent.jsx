@@ -1,4 +1,4 @@
-import {useEffect} from 'react';
+import { useEffect } from 'react';
 import L from 'leaflet';
 import 'leaflet-css';
 
@@ -24,23 +24,21 @@ const MapComponent = () => {
 
                 // Add GeoJSON data to the map with customized symbology
                 const geoJsonLayer = L.geoJSON(data, {
-                    pointToLayer: (feature, latlng) => {
-                        // Customize the point marker (e.g., using a circle marker)
-                        return L.circleMarker(latlng, {
-                            radius: 8, // Radius of the circle
-                            fillColor: 'red', // Fill color
-                            color: 'black', // Outline color
-                            weight: 1, // Outline width
-                            opacity: 1, // Outline opacity
-                            fillOpacity: 0.8 // Fill opacity
-                        });
-                    },
                     onEachFeature: (feature, layer) => {
-                        // Bind a popup to each feature
-                        const popupContent = feature.properties.PollingPlace
-                            ? `Polling Place: ${feature.properties.PollingPlace}`
-                            : 'No Polling Place Info';
+                        // Extract properties from the feature
+                        const props = feature.properties;
 
+                        // Create popup content with all available properties
+                        const popupContent = `
+                        <div style="color: black;">
+                            <strong>Name:</strong> ${props.name || 'N/A'}<br/>
+                            <strong>Address:</strong> ${props.address || 'N/A'}<br/>
+                            <strong>Zipcode:</strong> ${props.zipcode || 'N/A'}<br/>
+                            <strong>Line Count:</strong> ${props.inline || 'N/A'}<br/>
+                            <strong>Google Map Link:</strong> <a href="${props.gmap}" target="_blank">${props.gmap}</a><br/>
+                        `;
+
+                        // Bind the popup to the layer
                         layer.bindPopup(popupContent);
                     }
                 });
@@ -59,7 +57,7 @@ const MapComponent = () => {
         };
     }, []);
 
-    return <div id="map" style={{height: '100vh', width: '150vh'}}/>;
+    return <div id="map" style={{height: '80vh', width: '150vh'}} />;
 };
 
 export default MapComponent;
