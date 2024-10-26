@@ -15,7 +15,7 @@ const MapComponent = () => {
         const fetchData = async () => {
             try {
                 const response = await fetch(
-                    'https://services6.arcgis.com/wkbq75VVf2MvUvs7/arcgis/rest/services/lookup_view_polling_places_2024_11/FeatureServer/0/query?where=1%3D1&outFields=*&f=geojson'
+                    'https://services6.arcgis.com/wkbq75VVf2MvUvs7/ArcGIS/rest/services/lookup_view_polling_places_2024_11/FeatureServer/0/query?where=1%3D1&outFields=*&f=geojson'
                 );
                 if (!response.ok) {
                     throw new Error('Network response was not ok');
@@ -25,16 +25,17 @@ const MapComponent = () => {
                 // Add GeoJSON data to the map with customized symbology
                 const geoJsonLayer = L.geoJSON(data, {
                     onEachFeature: (feature, layer) => {
+                        console.log('Feature properties:', feature.properties);
                         // Extract properties from the feature
                         const props = feature.properties;
 
                         // Create popup content with all available properties
                         const popupContent = `
                         <div style="color: black;">
-                            <strong>Name:</strong> ${props.name || 'N/A'}<br/>
-                            <strong>Address:</strong> ${props.address || 'N/A'}<br/>
-                            <strong>Zipcode:</strong> ${props.zipcode || 'N/A'}<br/>
-                            <strong>Line Count:</strong> ${props.inline || 'N/A'}<br/>
+                            <strong>Name:</strong> ${props.name }<br/>
+                            <strong>Address:</strong> ${props.address}<br/>
+                            <strong>Zipcode:</strong> ${props.zipcode}<br/>
+                            <strong>Line Count:</strong> ${props.inline}<br/>
                             <strong>Google Map Link:</strong> <a href="${props.gmap}" target="_blank">${props.gmap}</a><br/>
                         `;
 
