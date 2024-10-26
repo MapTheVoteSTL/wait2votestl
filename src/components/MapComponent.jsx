@@ -1,6 +1,31 @@
-import { useEffect } from 'react';
+import {useEffect} from 'react';
 import L from 'leaflet';
 import 'leaflet-css';
+import Container from '@mui/material/Container';
+import Box from '@mui/material/Box';
+
+// Extract the voter count from the 'inline' attribute
+const extractVoterCount = (inline) => {
+    const match = inline.match(/^(\d+)/);
+    return match ? parseInt(match[0], 10) : null;
+};
+
+// Symbolize the marker color based on the voter count
+const getColorByVoterCount = (count) => {
+    if (count >= 50) return 'red';    // High voter count
+    if (count >= 25) return 'yellow';  // Medium voter count
+    return 'green';                   // Low voter count
+};
+
+// Custom icon for the marker
+const createCustomIcon = (color) => {
+    return L.divIcon({
+        className: 'custom-icon',
+        html: `<div style="background-color: ${color}; width: 16px; height: 16px; border-radius: 50%;"></div>`,
+        iconSize: [16, 16],
+        iconAnchor: [8, 8],
+    });
+};
 
 const MapComponent = () => {
     useEffect(() => {
@@ -24,15 +49,28 @@ const MapComponent = () => {
 
                 // Add GeoJSON data to the map with customized symbology
                 const geoJsonLayer = L.geoJSON(data, {
+                    filter: (feature) => {
+                        // Only include features with a non-null, non-empty 'inline' attribute
+                        return feature.properties.inline !== null && feature.properties.inline !== '';
+                    },
+                    pointToLayer: (feature, latlng) => {
+                        const inlineText = feature.properties.inline;
+                        const voterCount = extractVoterCount(inlineText);
+
+                        // Determine marker color based on voter count
+                        const markerColor = getColorByVoterCount(voterCount);
+
+                        // Create a marker with a custom icon
+                        return L.marker(latlng, {icon: createCustomIcon(markerColor)});
+                    },
                     onEachFeature: (feature, layer) => {
-                        console.log('Feature properties:', feature.properties);
                         // Extract properties from the feature
                         const props = feature.properties;
 
                         // Create popup content with all available properties
                         const popupContent = `
                         <div style="color: black;">
-                            <strong>Name:</strong> ${props.name }<br/>
+                            <strong>Name:</strong> ${props.name}<br/>
                             <strong>Address:</strong> ${props.address}<br/>
                             <strong>Zipcode:</strong> ${props.zipcode}<br/>
                             <strong>Line Count:</strong> ${props.inline}<br/>
@@ -58,7 +96,21 @@ const MapComponent = () => {
         };
     }, []);
 
-    return <div id="map" style={{height: '80vh', width: '150vh'}} />;
+    return (
+        <Container maxWidth={false} sx={{ padding: { xs: 2, md: 4 } }}>
+            <Box
+                display="flex"
+                justifyContent="center"
+                alignItems="center"
+                sx={{
+                    width: '85vw',
+                    height: { xs: '70vh', md: '85vh' }
+                }}
+            >
+                <div id="map" style={{ height: '100%', width: '100%' }} />
+            </Box>
+        </Container>
+    );
 };
 
 export default MapComponent;
