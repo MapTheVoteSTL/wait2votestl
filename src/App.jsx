@@ -3,7 +3,7 @@ import './App.css';
 
 function App() {
     return (
-        <div className="App">
+        <div>
             <h1>Wait 2 Vote STL</h1>
             <MapComponent/>
         </div>

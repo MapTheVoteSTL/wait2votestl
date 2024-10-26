@@ -1,21 +1,31 @@
+/* Make the root container more flexible for smaller screens */
 #root {
-  max-width: 1280px;
+  max-width: 100%;
   margin: 0 auto;
-  padding: 2rem;
+  padding: 1rem;
   text-align: center;
 }
 
+/* Improved logo styles */
 .logo {
   height: 6em;
-  padding: 1.5em;
+  padding: 1em;
   will-change: filter;
-  transition: filter 300ms;
+  transition: filter 300ms, transform 300ms;
 }
 .logo:hover {
   filter: drop-shadow(0 0 2em #646cffaa);
 }
 .logo.react:hover {
   filter: drop-shadow(0 0 2em #61dafbaa);
+}
+
+/* Adjust logo size and padding for smaller screens */
+@media (max-width: 600px) {
+  .logo {
+    height: 4em;
+    padding: 0.5em;
+  }
 }
 
 @keyframes logo-spin {
@@ -33,10 +43,27 @@
   }
 }
 
+/* Card styling with responsive padding */
 .card {
-  padding: 2em;
+  padding: 2rem;
+  margin: 1rem auto;
+  max-width: 100%;
 }
 
+@media (max-width: 600px) {
+  .card {
+    padding: 1rem;
+  }
+}
+
+/* Improved readability of the documentation link */
 .read-the-docs {
   color: #888;
+  font-size: 1rem;
+}
+
+@media (max-width: 600px) {
+  .read-the-docs {
+    font-size: 0.875rem;
+  }
 }
