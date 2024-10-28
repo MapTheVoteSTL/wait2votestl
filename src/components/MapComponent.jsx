@@ -69,12 +69,11 @@ const MapComponent = () => {
 
                         // Create popup content with all available properties
                         const popupContent = `
-                        <div style="color: black;">
-                            <strong>Name:</strong> ${props.name}<br/>
-                            <strong>Address:</strong> ${props.address}<br/>
-                            <strong>Zipcode:</strong> ${props.zipcode}<br/>
-                            <strong>Line Count:</strong> ${props.inline}<br/>
-                            <strong>Google Map Link:</strong> <a href="${props.gmap}" target="_blank">${props.gmap}</a><br/>
+                        <div style="color: black; font-size: 14px;"> 
+                            <strong>${props.name}</strong><br/>
+                            ${props.address}<br/>
+                            ${props.inline}<br/>
+                            Google Map: <a href="${props.gmap}" target="_blank">${props.gmap}</a><br/>
                         `;
 
                         // Bind the popup to the layer
