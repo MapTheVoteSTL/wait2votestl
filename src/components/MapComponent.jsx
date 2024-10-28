@@ -12,8 +12,8 @@ const extractVoterCount = (inline) => {
 
 // Symbolize the marker color based on the voter count
 const getColorByVoterCount = (count) => {
-    if (count >= 50) return 'red';    // High voter count
-    if (count >= 25) return 'yellow';  // Medium voter count
+    if (count >= 100) return 'red';    // High voter count
+    if (count >= 50) return 'yellow';  // Medium voter count
     return 'green';                   // Low voter count
 };
 
