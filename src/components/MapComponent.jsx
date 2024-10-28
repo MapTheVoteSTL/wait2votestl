@@ -91,8 +91,15 @@ const MapComponent = () => {
 
         fetchData();
 
+        // Set up interval for periodic fetching
+        const intervalId = setInterval(() => {
+            fetchData();
+        }, 30000); // Fetch every 30 seconds
+
+        // Cleanup on component unmount
         return () => {
-            map.remove(); // Cleanup map on component unmount
+            clearInterval(intervalId);
+            map.remove();
         };
     }, []);
 
