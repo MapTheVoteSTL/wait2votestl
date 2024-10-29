@@ -1,4 +1,4 @@
-import {useEffect} from 'react';
+import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet-css';
 import Container from '@mui/material/Container';
@@ -12,8 +12,8 @@ const extractVoterCount = (inline) => {
 
 // Symbolize the marker color based on the voter count
 const getColorByVoterCount = (count) => {
-    if (count >= 100) return 'red';    // High voter count
-    if (count >= 50) return 'yellow';  // Medium voter count
+    if (count >= 50) return 'red';    // High voter count
+    if (count >= 25) return 'yellow';  // Medium voter count
     return 'green';                   // Low voter count
 };
 
@@ -28,14 +28,18 @@ const createCustomIcon = (color) => {
 };
 
 const MapComponent = () => {
+    const mapContainerRef = useRef(null);
+
     useEffect(() => {
         // Create a map centered on St. Louis, MO
-        const map = L.map('map').setView([38.627003, -90.329402], 11);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19,
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        }).addTo(map);
-
+        let map;
+        const initializeMap = () => {
+            map = L.map(mapContainerRef.current).setView([38.627003, -90.329402], 11);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(map);
+        }
         // Fetch data from the St Louis County GIS server
         const fetchData = async () => {
             try {
@@ -69,11 +73,12 @@ const MapComponent = () => {
 
                         // Create popup content with all available properties
                         const popupContent = `
-                        <div style="color: black; font-size: 14px;"> 
-                            <strong>${props.name}</strong><br/>
-                            ${props.address}<br/>
-                            ${props.inline}<br/>
-                            Google Map: <a href="${props.gmap}" target="_blank">${props.gmap}</a><br/>
+                        <div style="color: black;">
+                            <strong>Name:</strong> ${props.name}<br/>
+                            <strong>Address:</strong> ${props.address}<br/>
+                            <strong>Zipcode:</strong> ${props.zipcode}<br/>
+                            <strong>Line Count:</strong> ${props.inline}<br/>
+                            <strong>Google Map Link:</strong> <a href="${props.gmap}" target="_blank">${props.gmap}</a><br/>
                         `;
 
                         // Bind the popup to the layer
@@ -90,6 +95,18 @@ const MapComponent = () => {
 
         fetchData();
 
+        const resizeMap = () => {
+            if (map) {
+                map.invalidateSize(); 
+            }
+        };
+      
+        if (mapContainerRef.current) {
+            initializeMap(); 
+        }
+      
+        window.addEventListener('resize', resizeMap);
+
         // Set up interval for periodic fetching
         const intervalId = setInterval(() => {
             fetchData();
@@ -97,26 +114,29 @@ const MapComponent = () => {
 
         // Cleanup on component unmount
         return () => {
+            window.removeEventListener('resize', resizeMap);
+            if (map) { 
+              map.remove(); // Clean up the map instance on unmount
+            }
             clearInterval(intervalId);
-            map.remove();
         };
     }, []);
 
     return (
-        <Container maxWidth={false} sx={{ padding: { xs: 2, md: 4 } }}>
+        <Container maxWidth={false} disableGutters>
             <Box
                 display="flex"
                 justifyContent="center"
                 alignItems="center"
                 sx={{
-                    width: '85vw',
-                    height: { xs: '70vh', md: '85vh' }
+                    width: '100vw',
+                    height: '100vh', 
+                    mt: { xs: '4rem', md: '6rem' } 
                 }}
             >
-                <div id="map" style={{ height: '100%', width: '100%' }} />
+                <div ref={mapContainerRef} style={{ height: '100%', width: '100%' }} /> 
             </Box>
-        </Container>
-    );
+      </Container>    );
 };
 
 export default MapComponent;
