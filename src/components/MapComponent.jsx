@@ -2,7 +2,6 @@ import {useEffect, useRef} from 'react';
 import L from 'leaflet';
 import 'leaflet-css';
 import {jenks} from 'simple-statistics';
-import chroma from 'chroma-js';
 import Container from '@mui/material/Container';
 import Box from '@mui/material/Box';
 
@@ -35,7 +34,7 @@ const MapComponent = () => {
         }).addTo(mapRef.current);
 
         // Function to add a legend to the map
-        const addLegend = (breaks, colorScale) => {
+        const addLegend = (breaks, colors) => {
             if (legendRef.current) {
                 mapRef.current.removeControl(legendRef.current);  // Remove existing legend
             }
@@ -47,7 +46,7 @@ const MapComponent = () => {
 
                 // Loop through the breaks and generate legend items
                 for (let i = 0; i < breaks.length - 1; i++) {
-                    const color = colorScale((breaks[i] + breaks[i + 1]) / 2).hex();
+                    const color = colors[i];
                     const from = Math.round(breaks[i]);
                     const to = Math.round(breaks[i + 1]);
                     labels.push(
@@ -83,8 +82,8 @@ const MapComponent = () => {
                     // Use simple-statistics to classify voter counts into 3 classes with Jenks
                     const breaks = jenks(voterCounts, 3);
 
-                    // Generate a color scale with three colors using chroma.js
-                    const colorScale = chroma.scale(['green', 'yellow', 'red']).domain(breaks);
+                    // Define fixed colors for each class: green, yellow, red
+                    const colors = ['green', 'yellow', 'red'];
 
                     // Add GeoJSON data to the map with classified symbology
                     const geoJsonLayer = L.geoJSON(data, {
@@ -98,8 +97,13 @@ const MapComponent = () => {
                             // Determine color based on Jenks classification
                             let markerColor = 'gray'; // Default color if count is null or undefined
                             if (voterCount !== null) {
-                                // Find the appropriate color based on voter count
-                                markerColor = colorScale(voterCount).hex();
+                                // Find the appropriate class index for the voter count using Jenks breaks
+                                let classIndex = breaks.findIndex((breakPoint) => voterCount <= breakPoint);
+                                if (classIndex === -1) {
+                                    classIndex = breaks.length - 1;
+                                }
+                                // Set color based on class index
+                                markerColor = colors[classIndex];
                             }
 
                             // Create a marker with a custom icon
@@ -122,7 +126,7 @@ const MapComponent = () => {
                     geoJsonLayer.addTo(mapRef.current);
 
                     // Add the legend (only once)
-                    addLegend(breaks, colorScale);
+                    addLegend(breaks, colors);
                 }
             } catch (error) {
                 console.error('Failed to fetch GeoJSON data:', error);
