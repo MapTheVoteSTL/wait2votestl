@@ -72,62 +72,91 @@ const MapComponent = () => {
                 }
                 const data = await response.json();
 
+                // Filter features with non-null, non-empty 'inline' attributes
+                const inlineFeatures = data.features.filter((feature) => {
+                    const inlineValue = feature.properties.inline;
+                    if (inlineValue !== null && inlineValue !== '') {
+                        return true;
+                    } else {
+                        console.log(`Filtered out feature with inline: ${inlineValue}`);
+                        return false;
+                    }
+                });
+
+
+                // Log the number of features with an 'inline' value
+                console.log(`Number of points with 'inline' value: ${inlineFeatures.length}`);
+
                 // Extract voter counts for classification
-                const voterCounts = data.features
+                const voterCounts = inlineFeatures
                     .map((feature) => extractVoterCount(feature.properties.inline))
                     .filter((count) => count !== null);
 
                 // Ensure there are enough data points to classify
+                let breaks, colors;
                 if (voterCounts.length > 0) {
                     // Use simple-statistics to classify voter counts into 3 classes with Jenks
-                    const breaks = jenks(voterCounts, 3);
-
+                    breaks = jenks(voterCounts, 3);
                     // Define fixed colors for each class: green, yellow, red
-                    const colors = ['green', 'yellow', 'red'];
-
-                    // Add GeoJSON data to the map with classified symbology
-                    const geoJsonLayer = L.geoJSON(data, {
-                        filter: (feature) => {
-                            return feature.properties.inline !== null && feature.properties.inline !== '';
-                        },
-                        pointToLayer: (feature, latlng) => {
-                            const inlineText = feature.properties.inline;
-                            const voterCount = extractVoterCount(inlineText);
-
-                            // Determine color based on Jenks classification
-                            let markerColor = 'gray'; // Default color if count is null or undefined
-                            if (voterCount !== null) {
-                                // Find the appropriate class index for the voter count using Jenks breaks
-                                let classIndex = breaks.findIndex((breakPoint) => voterCount <= breakPoint);
-                                if (classIndex === -1) {
-                                    classIndex = breaks.length - 1;
-                                }
-                                // Set color based on class index
-                                markerColor = colors[classIndex];
-                            }
-
-                            // Create a marker with a custom icon
-                            return L.marker(latlng, {icon: createCustomIcon(markerColor)});
-                        },
-                        onEachFeature: (feature, layer) => {
-                            const props = feature.properties;
-                            const popupContent = `
-                                <div style="color: black; font-size: 14px;"> 
-                                    <strong>${props.name}</strong><br/>
-                                    ${props.address}<br/>
-                                    ${props.inline}<br/>
-                                    Google Map: <a href="${props.gmap}" target="_blank">${props.gmap}</a><br/>
-                                </div>
-                            `;
-                            layer.bindPopup(popupContent);
-                        }
-                    });
-
-                    geoJsonLayer.addTo(mapRef.current);
-
-                    // Add the legend (only once)
-                    addLegend(breaks, colors);
+                    colors = ['#1a9641', '#f6f63f', '#d7191c'];
+                } else {
+                    // Default breaks and colors if no valid voter counts are found
+                    // breaks = [0, 1, 2, 3];
+                    // colors = ['gray', 'gray', 'gray'];
                 }
+
+                // Create a counter to track the number of displayed markers
+                let markerCount = 0;
+
+                // Add GeoJSON data to the map
+                const geoJsonLayer = L.geoJSON(data, {
+                    filter: (feature) => {
+                        // Include all features that have a non-empty 'inline' attribute
+                        return feature.properties.inline !== null && feature.properties.inline !== '';
+                    },
+                    pointToLayer: (feature, latlng) => {
+                        const inlineText = feature.properties.inline;
+                        const voterCount = extractVoterCount(inlineText);
+
+                        // Determine color based on Jenks classification
+                        let markerColor = 'gray'; // Default color if count is null or undefined
+                        if (voterCount !== null) {
+                            // Find the appropriate class index for the voter count using Jenks breaks
+                            let classIndex = breaks.findIndex((breakPoint) => voterCount <= breakPoint);
+                            if (classIndex === -1) {
+                                classIndex = breaks.length - 1;
+                            }
+                            // Set color based on class index
+                            markerColor = colors[classIndex];
+                        }
+
+                        // Increment the marker counter
+                        markerCount++;
+
+                        // Create a marker with a custom icon
+                        return L.marker(latlng, {icon: createCustomIcon(markerColor)});
+                    },
+                    onEachFeature: (feature, layer) => {
+                        const props = feature.properties;
+                        const popupContent = `
+                            <div style="color: black; font-size: 14px;"> 
+                                <strong>${props.name}</strong><br/>
+                                ${props.address}<br/>
+                                ${props.inline}<br/>
+                                Google Map: <a href="${props.gmap}" target="_blank">${props.gmap}</a><br/>
+                            </div>
+                        `;
+                        layer.bindPopup(popupContent);
+                    }
+                });
+
+                geoJsonLayer.addTo(mapRef.current);
+
+                // Log the number of markers added to the map
+                console.log(`Number of points displayed on the map: ${markerCount}`);
+
+                // Add the legend (only once)
+                addLegend(breaks, colors);
             } catch (error) {
                 console.error('Failed to fetch GeoJSON data:', error);
             }
