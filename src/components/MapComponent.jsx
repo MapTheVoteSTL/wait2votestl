@@ -54,6 +54,13 @@ const MapComponent = () => {
                     );
                 }
 
+                // Add the last legend item with the greater than sign
+                const lastColor = colors[colors.length - 1];
+                const lastFrom = Math.round(breaks[breaks.length - 2]);
+                labels[labels.length - 1] = (
+                    `<i style="background:${lastColor}; width: 18px; height: 18px; display: inline-block; margin-right: 8px;"></i> > ${lastFrom}`
+                );
+
                 div.innerHTML = `<strong>Number of People In Line</strong><br>` + labels.join('<br>');
                 return div;
             };
@@ -97,12 +104,13 @@ const MapComponent = () => {
                 if (voterCounts.length > 0) {
                     // Use simple-statistics to classify voter counts into 3 classes with Jenks
                     breaks = jenks(voterCounts, 3);
+                    console.log(breaks)
                     // Define fixed colors for each class: green, yellow, red
                     colors = ['#1a9641', '#f6f63f', '#d7191c'];
                 } else {
                     // Default breaks and colors if no valid voter counts are found
-                    // breaks = [0, 1, 2, 3];
-                    // colors = ['gray', 'gray', 'gray'];
+                    breaks = [0, 1, 2, 3];
+                    colors = ['gray', 'gray', 'gray'];
                 }
 
                 // Create a counter to track the number of displayed markers
