@@ -1,6 +1,8 @@
-import {useEffect} from 'react';
+import {useEffect, useRef} from 'react';
 import L from 'leaflet';
 import 'leaflet-css';
+import {jenks} from 'simple-statistics';
+import chroma from 'chroma-js';
 import Container from '@mui/material/Container';
 import Box from '@mui/material/Box';
 
@@ -8,13 +10,6 @@ import Box from '@mui/material/Box';
 const extractVoterCount = (inline) => {
     const match = inline.match(/^(\d+)/);
     return match ? parseInt(match[0], 10) : null;
-};
-
-// Symbolize the marker color based on the voter count
-const getColorByVoterCount = (count) => {
-    if (count >= 100) return 'red';    // High voter count
-    if (count >= 50) return 'yellow';  // Medium voter count
-    return 'green';                   // Low voter count
 };
 
 // Custom icon for the marker
@@ -28,13 +23,44 @@ const createCustomIcon = (color) => {
 };
 
 const MapComponent = () => {
+    const mapRef = useRef(null);  // Reference to the map instance
+    const legendRef = useRef(null);  // Reference to the legend control
+
     useEffect(() => {
         // Create a map centered on St. Louis, MO
-        const map = L.map('map').setView([38.627003, -90.329402], 11);
+        mapRef.current = L.map('map').setView([38.627003, -90.329402], 11);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        }).addTo(map);
+        }).addTo(mapRef.current);
+
+        // Function to add a legend to the map
+        const addLegend = (breaks, colorScale) => {
+            if (legendRef.current) {
+                mapRef.current.removeControl(legendRef.current);  // Remove existing legend
+            }
+
+            legendRef.current = L.control({position: 'bottomright'});
+            legendRef.current.onAdd = function () {
+                const div = L.DomUtil.create('div', 'info legend');
+                const labels = [];
+
+                // Loop through the breaks and generate legend items
+                for (let i = 0; i < breaks.length - 1; i++) {
+                    const color = colorScale((breaks[i] + breaks[i + 1]) / 2).hex();
+                    const from = Math.round(breaks[i]);
+                    const to = Math.round(breaks[i + 1]);
+                    labels.push(
+                        `<i style="background:${color}; width: 18px; height: 18px; display: inline-block; margin-right: 8px;"></i> ${from} - ${to}`
+                    );
+                }
+
+                div.innerHTML = `<strong>Number of People In Line</strong><br>` + labels.join('<br>');
+                return div;
+            };
+
+            legendRef.current.addTo(mapRef.current);
+        };
 
         // Fetch data from the St Louis County GIS server
         const fetchData = async () => {
@@ -47,42 +73,57 @@ const MapComponent = () => {
                 }
                 const data = await response.json();
 
-                // Add GeoJSON data to the map with customized symbology
-                const geoJsonLayer = L.geoJSON(data, {
-                    filter: (feature) => {
-                        // Only include features with a non-null, non-empty 'inline' attribute
-                        return feature.properties.inline !== null && feature.properties.inline !== '';
-                    },
-                    pointToLayer: (feature, latlng) => {
-                        const inlineText = feature.properties.inline;
-                        const voterCount = extractVoterCount(inlineText);
+                // Extract voter counts for classification
+                const voterCounts = data.features
+                    .map((feature) => extractVoterCount(feature.properties.inline))
+                    .filter((count) => count !== null);
 
-                        // Determine marker color based on voter count
-                        const markerColor = getColorByVoterCount(voterCount);
+                // Ensure there are enough data points to classify
+                if (voterCounts.length > 0) {
+                    // Use simple-statistics to classify voter counts into 3 classes with Jenks
+                    const breaks = jenks(voterCounts, 3);
 
-                        // Create a marker with a custom icon
-                        return L.marker(latlng, {icon: createCustomIcon(markerColor)});
-                    },
-                    onEachFeature: (feature, layer) => {
-                        // Extract properties from the feature
-                        const props = feature.properties;
+                    // Generate a color scale with three colors using chroma.js
+                    const colorScale = chroma.scale(['green', 'yellow', 'red']).domain(breaks);
 
-                        // Create popup content with all available properties
-                        const popupContent = `
-                        <div style="color: black; font-size: 14px;"> 
-                            <strong>${props.name}</strong><br/>
-                            ${props.address}<br/>
-                            ${props.inline}<br/>
-                            Google Map: <a href="${props.gmap}" target="_blank">${props.gmap}</a><br/>
-                        `;
+                    // Add GeoJSON data to the map with classified symbology
+                    const geoJsonLayer = L.geoJSON(data, {
+                        filter: (feature) => {
+                            return feature.properties.inline !== null && feature.properties.inline !== '';
+                        },
+                        pointToLayer: (feature, latlng) => {
+                            const inlineText = feature.properties.inline;
+                            const voterCount = extractVoterCount(inlineText);
 
-                        // Bind the popup to the layer
-                        layer.bindPopup(popupContent);
-                    }
-                });
+                            // Determine color based on Jenks classification
+                            let markerColor = 'gray'; // Default color if count is null or undefined
+                            if (voterCount !== null) {
+                                // Find the appropriate color based on voter count
+                                markerColor = colorScale(voterCount).hex();
+                            }
 
-                // Add the GeoJSON layer to the map
-                geoJsonLayer.addTo(map);
+                            // Create a marker with a custom icon
+                            return L.marker(latlng, {icon: createCustomIcon(markerColor)});
+                        },
+                        onEachFeature: (feature, layer) => {
+                            const props = feature.properties;
+                            const popupContent = `
+                                <div style="color: black; font-size: 14px;"> 
+                                    <strong>${props.name}</strong><br/>
+                                    ${props.address}<br/>
+                                    ${props.inline}<br/>
+                                    Google Map: <a href="${props.gmap}" target="_blank">${props.gmap}</a><br/>
+                                </div>
+                            `;
+                            layer.bindPopup(popupContent);
+                        }
+                    });
+
+                    geoJsonLayer.addTo(mapRef.current);
+
+                    // Add the legend (only once)
+                    addLegend(breaks, colorScale);
+                }
             } catch (error) {
                 console.error('Failed to fetch GeoJSON data:', error);
             }
@@ -91,29 +132,27 @@ const MapComponent = () => {
         fetchData();
 
         // Set up interval for periodic fetching
-        const intervalId = setInterval(() => {
-            fetchData();
-        }, 30000); // Fetch every 30 seconds
+        const intervalId = setInterval(fetchData, 30000); // Fetch every 30 seconds
 
         // Cleanup on component unmount
         return () => {
             clearInterval(intervalId);
-            map.remove();
+            mapRef.current.remove();
         };
     }, []);
 
     return (
-        <Container maxWidth={false} sx={{ padding: { xs: 2, md: 4 } }}>
+        <Container maxWidth={false} sx={{padding: {xs: 2, md: 4}}}>
             <Box
                 display="flex"
                 justifyContent="center"
                 alignItems="center"
                 sx={{
                     width: '85vw',
-                    height: { xs: '70vh', md: '85vh' }
+                    height: {xs: '70vh', md: '85vh'}
                 }}
             >
-                <div id="map" style={{ height: '100%', width: '100%' }} />
+                <div id="map" style={{height: '100%', width: '100%'}}/>
             </Box>
         </Container>
     );
