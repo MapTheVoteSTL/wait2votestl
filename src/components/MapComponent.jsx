@@ -21,6 +21,41 @@ const createCustomIcon = (color) => {
     });
 };
 
+// Function to add a legend to the map
+const addLegend = (mapRef, legendRef, breaks, colors) => {
+    if (legendRef.current) {
+        mapRef.current.removeControl(legendRef.current);  // Remove existing legend
+    }
+
+    legendRef.current = L.control({position: 'bottomright'});
+    legendRef.current.onAdd = function () {
+        const div = L.DomUtil.create('div', 'info legend');
+        const labels = [];
+
+        // Loop through the breaks and generate legend items
+        for (let i = 0; i < breaks.length - 1; i++) {
+            const color = colors[i];
+            const from = Math.round(breaks[i]);
+            const to = Math.round(breaks[i + 1]);
+            labels.push(
+                `<i style="background:${color}; width: 18px; height: 18px; display: inline-block; margin-right: 8px;"></i> ${from} - ${to}`
+            );
+        }
+
+        // Add the last legend item with the greater than sign
+        const lastColor = colors[colors.length - 1];
+        const lastFrom = Math.round(breaks[breaks.length - 2]);
+        labels[labels.length - 1] = (
+            `<i style="background:${lastColor}; width: 18px; height: 18px; display: inline-block; margin-right: 8px;"></i> > ${lastFrom}`
+        );
+
+        div.innerHTML = `<strong>Number of People In Line</strong><br>` + labels.join('<br>');
+        return div;
+    };
+
+    legendRef.current.addTo(mapRef.current);
+};
+
 const MapComponent = () => {
     const mapRef = useRef(null);  // Reference to the map instance
     const legendRef = useRef(null);  // Reference to the legend control
@@ -32,41 +67,6 @@ const MapComponent = () => {
             maxZoom: 19,
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(mapRef.current);
-
-        // Function to add a legend to the map
-        const addLegend = (breaks, colors) => {
-            if (legendRef.current) {
-                mapRef.current.removeControl(legendRef.current);  // Remove existing legend
-            }
-
-            legendRef.current = L.control({position: 'bottomright'});
-            legendRef.current.onAdd = function () {
-                const div = L.DomUtil.create('div', 'info legend');
-                const labels = [];
-
-                // Loop through the breaks and generate legend items
-                for (let i = 0; i < breaks.length - 1; i++) {
-                    const color = colors[i];
-                    const from = Math.round(breaks[i]);
-                    const to = Math.round(breaks[i + 1]);
-                    labels.push(
-                        `<i style="background:${color}; width: 18px; height: 18px; display: inline-block; margin-right: 8px;"></i> ${from} - ${to}`
-                    );
-                }
-
-                // Add the last legend item with the greater than sign
-                const lastColor = colors[colors.length - 1];
-                const lastFrom = Math.round(breaks[breaks.length - 2]);
-                labels[labels.length - 1] = (
-                    `<i style="background:${lastColor}; width: 18px; height: 18px; display: inline-block; margin-right: 8px;"></i> > ${lastFrom}`
-                );
-
-                div.innerHTML = `<strong>Number of People In Line</strong><br>` + labels.join('<br>');
-                return div;
-            };
-
-            legendRef.current.addTo(mapRef.current);
-        };
 
         // Fetch data from the St Louis County GIS server
         const fetchData = async () => {
@@ -89,7 +89,6 @@ const MapComponent = () => {
                         return false;
                     }
                 });
-
 
                 // Log the number of features with an 'inline' value
                 console.log(`Number of points with 'inline' value: ${inlineFeatures.length}`);
@@ -147,7 +146,7 @@ const MapComponent = () => {
                     onEachFeature: (feature, layer) => {
                         const props = feature.properties;
                         const popupContent = `
-                            <div style="color: black; font-size: 14px;"> 
+                            <div style="color: black; font-size: 14px;">
                                 <strong>${props.name}</strong><br/>
                                 ${props.address}<br/>
                                 ${props.inline}<br/>
@@ -164,7 +163,7 @@ const MapComponent = () => {
                 console.log(`Number of points displayed on the map: ${markerCount}`);
 
                 // Add the legend (only once)
-                addLegend(breaks, colors);
+                // addLegend(mapRef, legendRef, breaks, colors);
             } catch (error) {
                 console.error('Failed to fetch GeoJSON data:', error);
             }
