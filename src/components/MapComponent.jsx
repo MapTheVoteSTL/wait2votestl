@@ -164,7 +164,7 @@ const MapComponent = () => {
                 console.log(`Number of points displayed on the map: ${markerCount}`);
 
                 // Add the legend (only once)
-                addLegend(breaks, colors);
+                // addLegend(breaks, colors);
             } catch (error) {
                 console.error('Failed to fetch GeoJSON data:', error);
             }
