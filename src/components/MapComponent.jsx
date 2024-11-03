@@ -1,15 +1,21 @@
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import 'leaflet-css';
+import 'leaflet/dist/leaflet.css';
 import { jenks } from 'simple-statistics';
 import Container from '@mui/material/Container';
 import Box from '@mui/material/Box';
+import Modal from '@mui/material/Modal';
+import Typography from '@mui/material/Typography';
+import Button from '@mui/material/Button';
 
+// Extract the voter count from the 'inline' attribute
 const extractVoterCount = (inline) => {
     const match = inline.match(/^(\d+)/);
     return match ? parseInt(match[0], 10) : null;
 };
 
+// Custom icon for the marker
 const createCustomIcon = (color) => {
     return L.divIcon({
         className: 'custom-icon',
@@ -19,152 +25,184 @@ const createCustomIcon = (color) => {
     });
 };
 
-const MapComponent = () => {
-    const mapRef = useRef(null);
-    const legendRef = useRef(null);
-
-    const [geoJsonData, setGeoJsonData] = useState(null);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const [breaks, setBreaks] = useState([0, 1, 2, 3]);
-    const [colors, setColors] = useState(['gray', 'gray', 'gray']);
-    const [showLegend, setShowLegend] = useState(true);
-
-    const addLegend = () => {
-        if (legendRef.current) {
-            mapRef.current.removeControl(legendRef.current);
-        }
-
-        legendRef.current = L.control({ position: 'bottomright' });
-        legendRef.current.onAdd = () => {
+// Legend component
+const Legend = ({ breaks, colors }) => {
+    const map = useMap();
+    useEffect(() => {
+        const legend = L.control({ position: 'bottomright' });
+        legend.onAdd = () => {
             const div = L.DomUtil.create('div', 'info legend');
             const labels = [];
-
             for (let i = 0; i < breaks.length - 1; i++) {
+                const color = colors[i];
+                const from = Math.round(breaks[i]);
+                const to = Math.round(breaks[i + 1]);
                 labels.push(
-                    `<i style="background:${colors[i]}; width: 18px; height: 18px; display: inline-block; margin-right: 8px;"></i> ${Math.round(breaks[i])} - ${Math.round(breaks[i + 1])}`
+                    `<i style="background:${color}; width: 18px; height: 18px; display: inline-block; margin-right: 8px;"></i> ${from} - ${to}`
                 );
             }
-
+            const lastColor = colors[colors.length - 1];
+            const lastFrom = Math.round(breaks[breaks.length - 2]);
             labels.push(
-                `<i style="background:${colors[colors.length - 1]}; width: 18px; height: 18px; display: inline-block; margin-right: 8px;"></i> > ${Math.round(breaks[breaks.length - 2])}`
+                `<i style="background:${lastColor}; width: 18px; height: 18px; display: inline-block; margin-right: 8px;"></i> > ${lastFrom}`
             );
-
             div.innerHTML = `<strong>Number of People In Line</strong><br>${labels.join('<br>')}`;
             return div;
         };
+        legend.addTo(map);
+        return () => map.removeControl(legend);
+    }, [map, breaks, colors]);
 
-        if (showLegend) legendRef.current.addTo(mapRef.current);
-    };
+    return null;
+};
 
-    const fetchData = async () => {
-        setIsLoading(true);
-        try {
-            const response = await fetch(
-                'https://services6.arcgis.com/wkbq75VVf2MvUvs7/ArcGIS/rest/services/lookup_view_polling_places_2024_11/FeatureServer/0/query?where=1%3D1&outFields=*&f=geojson'
-            );
-            if (!response.ok) throw new Error('Network response was not ok');
-
-            const data = await response.json();
-            setGeoJsonData(data);
-
-            const inlineFeatures = data.features.filter((feature) => feature.properties.inline);
-            const voterCounts = inlineFeatures.map((feature) => extractVoterCount(feature.properties.inline)).filter((count) => count !== null);
-
-            if (voterCounts.length > 0) {
-                const computedBreaks = jenks(voterCounts, 3);
-                setBreaks(computedBreaks);
-                setColors(['#1a9641', '#f6f63f', '#d7191c']);
-            } else {
-                setBreaks([0, 1, 2, 3]);
-                setColors(['gray', 'gray', 'gray']);
-            }
-            setError(null);
-        } catch (error) {
-            setError(error.message);
-        } finally {
-            setIsLoading(false);
-        }
-    };
+// Data fetcher component
+const DataFetcher = ({ setMarkers, setLegend, setShowModal }) => {
+    const map = useMap();
 
     useEffect(() => {
-        if (!mapRef.current && document.getElementById('map')) {
-            mapRef.current = L.map('map').setView([38.627003, -90.329402], 11);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                maxZoom: 19,
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-            }).addTo(mapRef.current);
+        const fetchData = async () => {
+            try {
+                const response = await fetch(
+                    'https://services6.arcgis.com/wkbq75VVf2MvUvs7/ArcGIS/rest/services/lookup_view_polling_places_2024_11/FeatureServer/0/query?where=1%3D1&outFields=*&f=geojson'
+                );
+                if (!response.ok) throw new Error('Network response was not ok');
+                const data = await response.json();
 
-            fetchData();
+                const inlineFeatures = data.features.filter((feature) => {
+                    const inlineValue = feature.properties.inline;
+                    return inlineValue !== null && inlineValue !== '';
+                });
 
-            const intervalId = setInterval(fetchData, 30000);
-            return () => {
-                clearInterval(intervalId);
-                if (mapRef.current) mapRef.current.remove();
-            };
-        }
-    }, []);
+                const voterCounts = inlineFeatures
+                    .map((feature) => extractVoterCount(feature.properties.inline))
+                    .filter((count) => count !== null);
 
-    useEffect(() => {
-        if (!geoJsonData || !mapRef.current) return;
-
-        const inlineFeatures = geoJsonData.features.filter((feature) => feature.properties.inline);
-
-        if (inlineFeatures.length === 0) {
-            console.log("No data available to display.");
-            return;
-        }
-
-        const geoJsonLayer = L.geoJSON(geoJsonData, {
-            filter: (feature) => feature.properties.inline,
-            pointToLayer: (feature, latlng) => {
-                const voterCount = extractVoterCount(feature.properties.inline);
-                let markerColor = 'gray';
-                if (voterCount !== null) {
-                    let classIndex = breaks.findIndex((breakPoint) => voterCount <= breakPoint);
-                    if (classIndex === -1) classIndex = breaks.length - 1;
-                    markerColor = colors[classIndex];
+                let breaks, colors;
+                if (voterCounts.length > 0) {
+                    breaks = jenks(voterCounts, 3);
+                    colors = ['#1a9641', '#f6f63f', '#d7191c'];
+                } else {
+                    breaks = [0, 1, 2, 3];
+                    colors = ['gray', 'gray', 'gray'];
                 }
-                return L.marker(latlng, { icon: createCustomIcon(markerColor) });
-            },
-            onEachFeature: (feature, layer) => {
-                const props = feature.properties;
-                layer.bindPopup(`
-                    <div style="color: black; font-size: 14px;"> 
-                        <strong>${props.name}</strong><br/>
-                        ${props.address}<br/>
-                        ${props.inline}<br/>
-                        Google Map: <a href="${props.gmap}" target="_blank">${props.gmap}</a><br/>
-                    </div>
-                `);
-            },
-        });
 
-        geoJsonLayer.addTo(mapRef.current);
-        if (showLegend) addLegend();
+                const markers = inlineFeatures.map((feature) => {
+                    const inlineText = feature.properties.inline;
+                    const voterCount = extractVoterCount(inlineText);
 
-        return () => mapRef.current.removeLayer(geoJsonLayer);
-    }, [geoJsonData, breaks, colors, showLegend]);
+                    let markerColor = 'gray';
+                    if (voterCount !== null) {
+                        let classIndex = breaks.findIndex((breakPoint) => voterCount <= breakPoint);
+                        if (classIndex === -1) classIndex = breaks.length - 1;
+                        markerColor = colors[classIndex];
+                    }
+
+                    return {
+                        position: [feature.geometry.coordinates[1], feature.geometry.coordinates[0]],
+                        color: markerColor,
+                        name: feature.properties.name,
+                        address: feature.properties.address,
+                        inline: feature.properties.inline,
+                        gmap: feature.properties.gmap,
+                    };
+                });
+
+                setMarkers(markers);
+                setLegend({ breaks, colors });
+                if (markers.length === 0) setShowModal(true); // Show modal if no data is available
+            } catch (error) {
+                console.error('Failed to fetch GeoJSON data:', error);
+                setShowModal(true); // Show modal if fetching fails
+            }
+        };
+
+        fetchData();
+        const intervalId = setInterval(fetchData, 30000);
+
+        return () => clearInterval(intervalId);
+    }, [map, setMarkers, setLegend, setShowModal]);
+
+    return null;
+};
+
+const MapComponent = () => {
+    const [markers, setMarkers] = useState([]);
+    const [legend, setLegend] = useState(null);
+    const [showModal, setShowModal] = useState(false);
+
+    const handleClose = () => setShowModal(false);
 
     return (
         <Container maxWidth={false} sx={{ padding: { xs: 2, md: 4 } }}>
-            {isLoading && <div>Loading map data...</div>}
-            {error && <div>Error loading map: {error}</div>}
-            {!isLoading && !error && geoJsonData && geoJsonData.features.length === 0 && (
-                <div style={{ position: 'absolute', top: '10px', left: '10px', backgroundColor: 'rgba(255, 255, 255, 0.8)', padding: '10px', borderRadius: '5px' }}>
-                    No data available
-                </div>
-            )}
             <Box
                 display="flex"
                 justifyContent="center"
                 alignItems="center"
-                sx={{
-                    width: '85vw',
-                    height: { xs: '70vh', md: '85vh' }
-                }}
+                sx={{ width: '85vw', height: { xs: '70vh', md: '85vh' } }}
             >
-                <div id="map" style={{ height: '100%', width: '100%' }} />
+                <MapContainer
+                    center={[38.627003, -90.329402]}
+                    zoom={11}
+                    style={{ height: '100%', width: '100%' }}
+                >
+                    <TileLayer
+                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    />
+                    {markers.map((marker, index) => (
+                        <Marker
+                            key={index}
+                            position={marker.position}
+                            icon={createCustomIcon(marker.color)}
+                        >
+                            <Popup>
+                                <div style={{ color: 'black', fontSize: '14px' }}>
+                                    <strong>{marker.name}</strong><br />
+                                    {marker.address}<br />
+                                    {marker.inline}<br />
+                                    Google Map: <a href={marker.gmap} target="_blank" rel="noopener noreferrer">{marker.gmap}</a><br />
+                                </div>
+                            </Popup>
+                        </Marker>
+                    ))}
+                    {legend && markers.length > 0 && <Legend breaks={legend.breaks} colors={legend.colors} />}
+                    <DataFetcher setMarkers={setMarkers} setLegend={setLegend} setShowModal={setShowModal} />
+                </MapContainer>
+
+                {/* Modal */}
+                <Modal
+                    open={showModal}
+                    onClose={handleClose}
+                    aria-labelledby="no-data-modal"
+                    aria-describedby="no-data-description"
+                >
+                    <Box
+                        sx={{
+                            position: 'absolute',
+                            top: '50%',
+                            left: '50%',
+                            transform: 'translate(-50%, -50%)',
+                            width: { xs: 300, sm: 400 }, // Smaller width on mobile
+                            bgcolor: 'background.paper',
+                            borderRadius: '8px',
+                            boxShadow: 24,
+                            p: 4,
+                        }}
+                    >
+                        <Typography id="no-data-modal" variant="h6" component="h2" gutterBottom style={{ color: 'black' }}>
+                            No Voter Line Data Available
+                        </Typography>
+                        <Typography id="no-data-description" sx={{ mt: 2 }} style={{ color: 'black' }}>
+                            There is currently no data to display on the map. Please try again when polls are open.
+                        </Typography>
+                        <Box mt={3} textAlign="center">
+                            <Button variant="contained" onClick={handleClose}>
+                                Close
+                            </Button>
+                        </Box>
+                    </Box>
+                </Modal>
             </Box>
         </Container>
     );
