@@ -25,36 +25,46 @@ const createCustomIcon = (color) => {
     });
 };
 
-// Legend component
 const Legend = ({ breaks, colors }) => {
     const map = useMap();
+
     useEffect(() => {
         const legend = L.control({ position: 'bottomright' });
+
         legend.onAdd = () => {
             const div = L.DomUtil.create('div', 'info legend');
             const labels = [];
-            for (let i = 0; i < breaks.length - 1; i++) {
+
+            // Build legend items for each range except the last one
+            for (let i = 0; i < colors.length - 1; i++) {
                 const color = colors[i];
                 const from = Math.round(breaks[i]);
                 const to = Math.round(breaks[i + 1]);
+
                 labels.push(
                     `<i style="background:${color}; width: 18px; height: 18px; display: inline-block; margin-right: 8px;"></i> ${from} - ${to}`
                 );
             }
+
+            // Add the last item with "> last break value"
             const lastColor = colors[colors.length - 1];
             const lastFrom = Math.round(breaks[breaks.length - 2]);
+
             labels.push(
                 `<i style="background:${lastColor}; width: 18px; height: 18px; display: inline-block; margin-right: 8px;"></i> > ${lastFrom}`
             );
+
             div.innerHTML = `<strong>Number of People In Line</strong><br>${labels.join('<br>')}`;
             return div;
         };
+
         legend.addTo(map);
         return () => map.removeControl(legend);
     }, [map, breaks, colors]);
 
     return null;
 };
+
 
 // Data fetcher component
 const DataFetcher = ({ setMarkers, setLegend, setShowModal }) => {
@@ -80,8 +90,8 @@ const DataFetcher = ({ setMarkers, setLegend, setShowModal }) => {
 
                 let breaks, colors;
                 if (voterCounts.length > 0) {
-                    breaks = jenks(voterCounts, 3);
-                    colors = ['#1a9641', '#f6f63f', '#d7191c'];
+                    breaks = jenks(voterCounts, 4);
+                    colors = colors = ['#1a9641', '#f6f63f', '#fd8d3c', '#d7191c'];
                 } else {
                     breaks = [0, 1, 2, 3];
                     colors = ['gray', 'gray', 'gray'];
