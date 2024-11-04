@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import React, {useEffect, useState} from 'react';
+import {MapContainer, TileLayer, Marker, Popup, useMap} from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { jenks } from 'simple-statistics';
+import {jenks} from 'simple-statistics';
 import Container from '@mui/material/Container';
 import Box from '@mui/material/Box';
 import Modal from '@mui/material/Modal';
@@ -25,33 +25,40 @@ const createCustomIcon = (color) => {
     });
 };
 
-const Legend = ({ breaks, colors }) => {
+const Legend = ({breaks, colors}) => {
     const map = useMap();
 
     useEffect(() => {
-        const legend = L.control({ position: 'bottomright' });
+        const legend = L.control({position: 'bottomright'});
 
         legend.onAdd = () => {
             const div = L.DomUtil.create('div', 'info legend');
             const labels = [];
 
-            // Build legend items for each range except the last one
-            for (let i = 0; i < colors.length - 1; i++) {
-                const color = colors[i];
-                const from = Math.round(breaks[i]);
-                const to = Math.round(breaks[i + 1]);
-
-                labels.push(
-                    `<i style="background:${color}; width: 18px; height: 18px; display: inline-block; margin-right: 8px;"></i> ${from} - ${to}`
-                );
+            // Ensure breaks and colors align correctly
+            if (breaks.length !== colors.length + 1) {
+                console.error("Breaks and colors length mismatch.");
+                return div;
             }
 
-            // Add the last item with "> last break value"
-            const lastColor = colors[colors.length - 1];
-            const lastFrom = Math.round(breaks[breaks.length - 2]);
-
+            // 1. Values below the first break
             labels.push(
-                `<i style="background:${lastColor}; width: 18px; height: 18px; display: inline-block; margin-right: 8px;"></i> > ${lastFrom}`
+                `<i style="background:${colors[0]}; width: 18px; height: 18px; display: inline-block; margin-right: 8px;"></i> < ${Math.round(breaks[0])}`
+            );
+
+            // 2. Range from 208 to 3807
+            labels.push(
+                `<i style="background:${colors[1]}; width: 18px; height: 18px; display: inline-block; margin-right: 8px;"></i> ${Math.round(breaks[0])} - ${Math.round(breaks[1])}`
+            );
+
+            // 3. Range from 3808 to 4507
+            labels.push(
+                `<i style="background:${colors[2]}; width: 18px; height: 18px; display: inline-block; margin-right: 8px;"></i> ${Math.round(breaks[1]) + 1} - ${Math.round(breaks[2])}`
+            );
+
+            // 4. Values above the last break
+            labels.push(
+                `<i style="background:${colors[3]}; width: 18px; height: 18px; display: inline-block; margin-right: 8px;"></i> > ${Math.round(breaks[2])}`
             );
 
             div.innerHTML = `<strong>Number of People In Line</strong><br>${labels.join('<br>')}`;
@@ -59,6 +66,7 @@ const Legend = ({ breaks, colors }) => {
         };
 
         legend.addTo(map);
+
         return () => map.removeControl(legend);
     }, [map, breaks, colors]);
 
@@ -66,8 +74,7 @@ const Legend = ({ breaks, colors }) => {
 };
 
 
-// Data fetcher component
-const DataFetcher = ({ setMarkers, setLegend, setShowModal }) => {
+const DataFetcher = ({setMarkers, setLegend, setShowModal}) => {
     const map = useMap();
 
     useEffect(() => {
@@ -91,7 +98,7 @@ const DataFetcher = ({ setMarkers, setLegend, setShowModal }) => {
                 let breaks, colors;
                 if (voterCounts.length > 0) {
                     breaks = jenks(voterCounts, 4);
-                    colors = colors = ['#1a9641', '#f6f63f', '#fd8d3c', '#d7191c'];
+                    colors = ['#1a9641', '#f6f63f', '#fd8d3c', '#d7191c'];
                 } else {
                     breaks = [0, 1, 2, 3];
                     colors = ['gray', 'gray', 'gray'];
@@ -100,13 +107,19 @@ const DataFetcher = ({ setMarkers, setLegend, setShowModal }) => {
                 const markers = inlineFeatures.map((feature) => {
                     const inlineText = feature.properties.inline;
                     const voterCount = extractVoterCount(inlineText);
-
                     let markerColor = 'gray';
-                    if (voterCount !== null) {
-                        let classIndex = breaks.findIndex((breakPoint) => voterCount <= breakPoint);
-                        if (classIndex === -1) classIndex = breaks.length - 1;
-                        markerColor = colors[classIndex];
+                    let classIndex = breaks.findIndex((breakPoint, index) => {
+                        if (index === breaks.length - 1 && voterCount > breakPoint) {
+                            return true;
+                        }
+                        return voterCount <= breakPoint;
+                    });
+
+                    if (classIndex === -1) {
+                        classIndex = colors.length - 1;
                     }
+
+                    markerColor = colors[classIndex];
 
                     return {
                         position: [feature.geometry.coordinates[1], feature.geometry.coordinates[0]],
@@ -119,11 +132,11 @@ const DataFetcher = ({ setMarkers, setLegend, setShowModal }) => {
                 });
 
                 setMarkers(markers);
-                setLegend({ breaks, colors });
-                if (markers.length === 0) setShowModal(true); // Show modal if no data is available
+                setLegend({breaks, colors});
+                if (markers.length === 0) setShowModal(true);
             } catch (error) {
                 console.error('Failed to fetch GeoJSON data:', error);
-                setShowModal(true); // Show modal if fetching fails
+                setShowModal(true);
             }
         };
 
@@ -136,6 +149,19 @@ const DataFetcher = ({ setMarkers, setLegend, setShowModal }) => {
     return null;
 };
 
+const MapBoundsAdjuster = ({markers}) => {
+    const map = useMap();
+
+    useEffect(() => {
+        if (markers.length > 0) {
+            const bounds = markers.map(marker => marker.position);
+            map.fitBounds(bounds);
+        }
+    }, [map, markers]);
+
+    return null;
+};
+
 const MapComponent = () => {
     const [markers, setMarkers] = useState([]);
     const [legend, setLegend] = useState(null);
@@ -144,17 +170,17 @@ const MapComponent = () => {
     const handleClose = () => setShowModal(false);
 
     return (
-        <Container maxWidth={false} sx={{ padding: { xs: 2, md: 4 } }}>
+        <Container maxWidth={false} sx={{padding: {xs: 2, md: 4}}}>
             <Box
                 display="flex"
                 justifyContent="center"
                 alignItems="center"
-                sx={{ width: '85vw', height: { xs: '70vh', md: '85vh' } }}
+                sx={{width: '85vw', height: {xs: '70vh', md: '85vh'}}}
             >
                 <MapContainer
                     center={[38.627003, -90.329402]}
                     zoom={11}
-                    style={{ height: '100%', width: '100%' }}
+                    style={{height: '100%', width: '100%'}}
                 >
                     <TileLayer
                         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -167,20 +193,21 @@ const MapComponent = () => {
                             icon={createCustomIcon(marker.color)}
                         >
                             <Popup>
-                                <div style={{ color: 'black', fontSize: '14px' }}>
-                                    <strong>{marker.name}</strong><br />
-                                    {marker.address}<br />
-                                    {marker.inline}<br />
-                                    Google Map: <a href={marker.gmap} target="_blank" rel="noopener noreferrer">{marker.gmap}</a><br />
+                                <div style={{color: 'black', fontSize: '14px'}}>
+                                    <strong>{marker.name}</strong><br/>
+                                    {marker.address}<br/>
+                                    {marker.inline}<br/>
+                                    Google Map: <a href={marker.gmap} target="_blank"
+                                                   rel="noopener noreferrer">{marker.gmap}</a><br/>
                                 </div>
                             </Popup>
                         </Marker>
                     ))}
-                    {legend && markers.length > 0 && <Legend breaks={legend.breaks} colors={legend.colors} />}
-                    <DataFetcher setMarkers={setMarkers} setLegend={setLegend} setShowModal={setShowModal} />
+                    {legend && markers.length > 0 && <Legend breaks={legend.breaks} colors={legend.colors}/>}
+                    <DataFetcher setMarkers={setMarkers} setLegend={setLegend} setShowModal={setShowModal}/>
+                    <MapBoundsAdjuster markers={markers}/>
                 </MapContainer>
 
-                {/* Modal */}
                 <Modal
                     open={showModal}
                     onClose={handleClose}
@@ -193,17 +220,18 @@ const MapComponent = () => {
                             top: '50%',
                             left: '50%',
                             transform: 'translate(-50%, -50%)',
-                            width: { xs: 300, sm: 400 }, // Smaller width on mobile
+                            width: {xs: 300, sm: 400},
                             bgcolor: 'background.paper',
                             borderRadius: '8px',
                             boxShadow: 24,
                             p: 4,
                         }}
                     >
-                        <Typography id="no-data-modal" variant="h6" component="h2" gutterBottom style={{ color: 'black' }}>
+                        <Typography id="no-data-modal" variant="h6" component="h2" gutterBottom
+                                    style={{color: 'black'}}>
                             No Voter Line Data Available
                         </Typography>
-                        <Typography id="no-data-description" sx={{ mt: 2 }} style={{ color: 'black' }}>
+                        <Typography id="no-data-description" sx={{mt: 2}} style={{color: 'black'}}>
                             There is currently no data to display on the map. Please try again when polls are open.
                         </Typography>
                         <Box mt={3} textAlign="center">
