@@ -106,7 +106,7 @@ const MapComponent = () => {
                     breaks = jenks(voterCounts, 3);
                     console.log(breaks)
                     // Define fixed colors for each class: green, yellow, red
-                    colors = ['#1a9641', '#f6f63f', '#d7191c'];
+                    colors = ['#1a9641', '#f6f63f', '#fd8d3c', '#d7191c'];
                 } else {
                     // Default breaks and colors if no valid voter counts are found
                     breaks = [0, 1, 2, 3];
