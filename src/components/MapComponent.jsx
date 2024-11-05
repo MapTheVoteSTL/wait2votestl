@@ -1,9 +1,13 @@
-import {useEffect, useRef} from 'react';
+import React, {useEffect, useState} from 'react';
+import {MapContainer, TileLayer, Marker, Popup, useMap} from 'react-leaflet';
 import L from 'leaflet';
-import 'leaflet-css';
+import 'leaflet/dist/leaflet.css';
 import {jenks} from 'simple-statistics';
 import Container from '@mui/material/Container';
 import Box from '@mui/material/Box';
+import Modal from '@mui/material/Modal';
+import Typography from '@mui/material/Typography';
+import Button from '@mui/material/Button';
 
 // Extract the voter count from the 'inline' attribute
 const extractVoterCount = (inline) => {
@@ -21,166 +25,149 @@ const createCustomIcon = (color) => {
     });
 };
 
-const MapComponent = () => {
-    const mapRef = useRef(null);  // Reference to the map instance
-    const legendRef = useRef(null);  // Reference to the legend control
+const Legend = ({breaks, colors}) => {
+    const map = useMap();
 
     useEffect(() => {
-        // Create a map centered on St. Louis, MO
-        mapRef.current = L.map('map').setView([38.627003, -90.329402], 11);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19,
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        }).addTo(mapRef.current);
+        const legend = L.control({position: 'bottomright'});
 
-        // Function to add a legend to the map
-        const addLegend = (breaks, colors) => {
-            if (legendRef.current) {
-                mapRef.current.removeControl(legendRef.current);  // Remove existing legend
+        legend.onAdd = () => {
+            const div = L.DomUtil.create('div', 'info legend');
+            const labels = [];
+
+            // Ensure breaks and colors align correctly
+            if (breaks.length !== colors.length + 1) {
+                console.error("Breaks and colors length mismatch.");
+                return div;
             }
 
-            legendRef.current = L.control({position: 'bottomright'});
-            legendRef.current.onAdd = function () {
-                const div = L.DomUtil.create('div', 'info legend');
-                const labels = [];
+            // 1. Values below the first break
+            labels.push(
+                `<i style="background:${colors[0]}; width: 18px; height: 18px; display: inline-block; margin-right: 8px;"></i> < ${Math.round(breaks[0])}`
+            );
 
-                // Loop through the breaks and generate legend items
-                for (let i = 0; i < breaks.length - 1; i++) {
-                    const color = colors[i];
-                    const from = Math.round(breaks[i]);
-                    const to = Math.round(breaks[i + 1]);
-                    labels.push(
-                        `<i style="background:${color}; width: 18px; height: 18px; display: inline-block; margin-right: 8px;"></i> ${from} - ${to}`
-                    );
-                }
+            // 2. Range from 208 to 3807
+            labels.push(
+                `<i style="background:${colors[1]}; width: 18px; height: 18px; display: inline-block; margin-right: 8px;"></i> ${Math.round(breaks[0])} - ${Math.round(breaks[1])}`
+            );
 
-                // Add the last legend item with the greater than sign
-                const lastColor = colors[colors.length - 1];
-                const lastFrom = Math.round(breaks[breaks.length - 2]);
-                labels[labels.length - 1] = (
-                    `<i style="background:${lastColor}; width: 18px; height: 18px; display: inline-block; margin-right: 8px;"></i> > ${lastFrom}`
-                );
+            // 3. Range from 3808 to 4507
+            labels.push(
+                `<i style="background:${colors[2]}; width: 18px; height: 18px; display: inline-block; margin-right: 8px;"></i> ${Math.round(breaks[1]) + 1} - ${Math.round(breaks[2])}`
+            );
 
-                div.innerHTML = `<strong>Number of People In Line</strong><br>` + labels.join('<br>');
-                return div;
-            };
+            // 4. Values above the last break
+            labels.push(
+                `<i style="background:${colors[3]}; width: 18px; height: 18px; display: inline-block; margin-right: 8px;"></i> > ${Math.round(breaks[2])}`
+            );
 
-            legendRef.current.addTo(mapRef.current);
+            div.innerHTML = `<strong>Number of People In Line</strong><br>${labels.join('<br>')}`;
+            return div;
         };
 
-        // Fetch data from the St Louis County GIS server
+        legend.addTo(map);
+
+        return () => map.removeControl(legend);
+    }, [map, breaks, colors]);
+
+    return null;
+};
+
+
+const DataFetcher = ({setMarkers, setLegend, setShowModal}) => {
+    const map = useMap();
+
+    useEffect(() => {
         const fetchData = async () => {
             try {
                 const response = await fetch(
                     'https://services6.arcgis.com/wkbq75VVf2MvUvs7/ArcGIS/rest/services/lookup_view_polling_places_2024_11/FeatureServer/0/query?where=1%3D1&outFields=*&f=geojson'
                 );
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
+                if (!response.ok) throw new Error('Network response was not ok');
                 const data = await response.json();
 
-                // Filter features with non-null, non-empty 'inline' attributes
                 const inlineFeatures = data.features.filter((feature) => {
                     const inlineValue = feature.properties.inline;
-                    if (inlineValue !== null && inlineValue !== '') {
-                        return true;
-                    } else {
-                        console.log(`Filtered out feature with inline: ${inlineValue}`);
-                        return false;
-                    }
+                    return inlineValue !== null && inlineValue !== '';
                 });
 
-
-                // Log the number of features with an 'inline' value
-                console.log(`Number of points with 'inline' value: ${inlineFeatures.length}`);
-
-                // Extract voter counts for classification
                 const voterCounts = inlineFeatures
                     .map((feature) => extractVoterCount(feature.properties.inline))
                     .filter((count) => count !== null);
 
-                // Ensure there are enough data points to classify
                 let breaks, colors;
                 if (voterCounts.length > 0) {
-                    // Use simple-statistics to classify voter counts into 3 classes with Jenks
-                    breaks = jenks(voterCounts, 3);
-                    console.log(breaks)
-                    // Define fixed colors for each class: green, yellow, red
+                    breaks = jenks(voterCounts, 4);
                     colors = ['#1a9641', '#f6f63f', '#fd8d3c', '#d7191c'];
                 } else {
-                    // Default breaks and colors if no valid voter counts are found
                     breaks = [0, 1, 2, 3];
                     colors = ['gray', 'gray', 'gray'];
                 }
 
-                // Create a counter to track the number of displayed markers
-                let markerCount = 0;
-
-                // Add GeoJSON data to the map
-                const geoJsonLayer = L.geoJSON(data, {
-                    filter: (feature) => {
-                        // Include all features that have a non-empty 'inline' attribute
-                        return feature.properties.inline !== null && feature.properties.inline !== '';
-                    },
-                    pointToLayer: (feature, latlng) => {
-                        const inlineText = feature.properties.inline;
-                        const voterCount = extractVoterCount(inlineText);
-
-                        // Determine color based on Jenks classification
-                        let markerColor = 'gray'; // Default color if count is null or undefined
-                        if (voterCount !== null) {
-                            // Find the appropriate class index for the voter count using Jenks breaks
-                            let classIndex = breaks.findIndex((breakPoint) => voterCount <= breakPoint);
-                            if (classIndex === -1) {
-                                classIndex = breaks.length - 1;
-                            }
-                            // Set color based on class index
-                            markerColor = colors[classIndex];
+                const markers = inlineFeatures.map((feature) => {
+                    const inlineText = feature.properties.inline;
+                    const voterCount = extractVoterCount(inlineText);
+                    let markerColor = 'gray';
+                    let classIndex = breaks.findIndex((breakPoint, index) => {
+                        if (index === breaks.length - 1 && voterCount > breakPoint) {
+                            return true;
                         }
+                        return voterCount <= breakPoint;
+                    });
 
-                        // Increment the marker counter
-                        markerCount++;
-
-                        // Create a marker with a custom icon
-                        return L.marker(latlng, {icon: createCustomIcon(markerColor)});
-                    },
-                    onEachFeature: (feature, layer) => {
-                        const props = feature.properties;
-                        const popupContent = `
-                            <div style="color: black; font-size: 14px;"> 
-                                <strong>${props.name}</strong><br/>
-                                ${props.address}<br/>
-                                ${props.inline}<br/>
-                                Google Map: <a href="${props.gmap}" target="_blank">${props.gmap}</a><br/>
-                            </div>
-                        `;
-                        layer.bindPopup(popupContent);
+                    if (classIndex === -1) {
+                        classIndex = colors.length - 1;
                     }
+
+                    markerColor = colors[classIndex];
+
+                    return {
+                        position: [feature.geometry.coordinates[1], feature.geometry.coordinates[0]],
+                        color: markerColor,
+                        name: feature.properties.name,
+                        address: feature.properties.address,
+                        inline: feature.properties.inline,
+                        gmap: feature.properties.gmap,
+                    };
                 });
 
-                geoJsonLayer.addTo(mapRef.current);
-
-                // Log the number of markers added to the map
-                console.log(`Number of points displayed on the map: ${markerCount}`);
-
-                // Add the legend (only once)
-                // addLegend(breaks, colors);
+                setMarkers(markers);
+                setLegend({breaks, colors});
+                if (markers.length === 0) setShowModal(true);
             } catch (error) {
                 console.error('Failed to fetch GeoJSON data:', error);
+                setShowModal(true);
             }
         };
 
         fetchData();
+        const intervalId = setInterval(fetchData, 30000);
 
-        // Set up interval for periodic fetching
-        const intervalId = setInterval(fetchData, 30000); // Fetch every 30 seconds
+        return () => clearInterval(intervalId);
+    }, [map, setMarkers, setLegend, setShowModal]);
 
-        // Cleanup on component unmount
-        return () => {
-            clearInterval(intervalId);
-            mapRef.current.remove();
-        };
+    return null;
+};
+
+const MapBoundsAdjuster = ({markers}) => {
+    const map = useMap();
+
+    useEffect(() => {
+        if (markers.length > 0) {
+            const bounds = markers.map(marker => marker.position);
+            map.fitBounds(bounds);
+        }
     }, []);
+
+    return null;
+};
+
+const MapComponent = () => {
+    const [markers, setMarkers] = useState([]);
+    const [legend, setLegend] = useState(null);
+    const [showModal, setShowModal] = useState(false);
+
+    const handleClose = () => setShowModal(false);
 
     return (
         <Container maxWidth={false} sx={{padding: {xs: 2, md: 4}}}>
@@ -188,12 +175,72 @@ const MapComponent = () => {
                 display="flex"
                 justifyContent="center"
                 alignItems="center"
-                sx={{
-                    width: '85vw',
-                    height: {xs: '70vh', md: '85vh'}
-                }}
+                sx={{width: '85vw', height: {xs: '70vh', md: '85vh'}}}
             >
-                <div id="map" style={{height: '100%', width: '100%'}}/>
+                <MapContainer
+                    center={[38.627003, -90.329402]}
+                    zoom={11}
+                    style={{height: '100%', width: '100%'}}
+                >
+                    <TileLayer
+                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    />
+                    {markers.map((marker, index) => (
+                        <Marker
+                            key={index}
+                            position={marker.position}
+                            icon={createCustomIcon(marker.color)}
+                        >
+                            <Popup>
+                                <div style={{color: 'black', fontSize: '14px'}}>
+                                    <strong>{marker.name}</strong><br/>
+                                    {marker.address}<br/>
+                                    {marker.inline}<br/>
+                                    Google Map: <a href={marker.gmap} target="_blank"
+                                                   rel="noopener noreferrer">{marker.gmap}</a><br/>
+                                </div>
+                            </Popup>
+                        </Marker>
+                    ))}
+                    {legend && markers.length > 0 && <Legend breaks={legend.breaks} colors={legend.colors}/>}
+                    <DataFetcher setMarkers={setMarkers} setLegend={setLegend} setShowModal={setShowModal}/>
+                    <MapBoundsAdjuster markers={markers}/>
+                </MapContainer>
+
+                <Modal
+                    open={showModal}
+                    onClose={handleClose}
+                    aria-labelledby="no-data-modal"
+                    aria-describedby="no-data-description"
+                >
+                    <Box
+                        sx={{
+                            position: 'absolute',
+                            top: '50%',
+                            left: '50%',
+                            transform: 'translate(-50%, -50%)',
+                            width: {xs: 300, sm: 400},
+                            bgcolor: 'background.paper',
+                            borderRadius: '8px',
+                            boxShadow: 24,
+                            p: 4,
+                        }}
+                    >
+                        <Typography id="no-data-modal" variant="h6" component="h2" gutterBottom
+                                    style={{color: 'black'}}>
+                            No Voter Line Data Available
+                        </Typography>
+                        <Typography id="no-data-description" sx={{mt: 2}} style={{color: 'black'}}>
+                            There is currently no data to display on the map. Please try again when polls are open.
+                        </Typography>
+                        <Box mt={3} textAlign="center">
+                            <Button variant="contained" onClick={handleClose}>
+                                Close
+                            </Button>
+                        </Box>
+                    </Box>
+                </Modal>
             </Box>
         </Container>
     );
