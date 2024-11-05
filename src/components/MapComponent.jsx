@@ -157,7 +157,7 @@ const MapBoundsAdjuster = ({markers}) => {
             const bounds = markers.map(marker => marker.position);
             map.fitBounds(bounds);
         }
-    }, [map, markers]);
+    }, []);
 
     return null;
 };
